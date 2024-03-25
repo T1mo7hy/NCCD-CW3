@@ -167,7 +167,7 @@ if __name__ == "__main__":
         help="Where to output the analysis. Default is pcap-output.txt.",
     )
     parser.add_argument(
-        "-h",
+        "-hl",
         "--headless",
         action="store_true",
         help="Use this flag to not have the live stats updates. Might run a little faster?"
