@@ -42,6 +42,8 @@ def get_packet_layers(packet):
     yield packet.name
     while packet.payload:
         packet = packet.payload
+        if packet.payload.name == packet.name:
+            continue
         if packet.name != "Padding" and packet.name != "Raw":
             yield packet.name
 
@@ -135,6 +137,8 @@ def update_stats():
     global console, protocol_count, updating
 
     console = curses.initscr()
+    console.scrollok(True)
+    console.idlok(True)
     while updating:
         console.erase()
         console.addstr(page_title)
@@ -162,6 +166,12 @@ if __name__ == "__main__":
         default="pcap-output.txt",
         help="Where to output the analysis. Default is pcap-output.txt.",
     )
+    parser.add_argument(
+        "-h",
+        "--headless",
+        action="store_true",
+        help="Use this flag to not have the live stats updates. Might run a little faster?"
+    )
     args = parser.parse_args()
 
     if len(sys.argv) == 1:
@@ -181,17 +191,23 @@ if __name__ == "__main__":
 
     arp_count = {}
     icmp_count = {}
+    snmp_info = []
 
     h_to_h = {}
 
     updating = True
 
-    update_thread = threading.Thread(target=update_stats)
-    update_thread.start()
+    if not args.headless:
+        update_thread = threading.Thread(target=update_stats)
+        update_thread.start()
 
     for packet in packets:
         protocols = list(get_packet_layers(packet))
         protocol_count.update_path(protocols)
+
+        if packet.haslayer(SNMPresponse):
+            if isinstance(packet[SNMPvarbind].value, ASN1_IPADDRESS):
+                snmp_info.append(packet[SNMPvarbind].value.val)
 
         if packet.haslayer(ARP):
             if packet[ARP].op == 2:
@@ -233,8 +249,9 @@ if __name__ == "__main__":
             packet.show()
 
     updating = False
-
-    update_thread.join()
+    
+    if not args.headless:
+        update_thread.join()
 
     print("Done!")
 
@@ -243,10 +260,18 @@ if __name__ == "__main__":
     file = open(args.output, "w+")
 
     dict_to_file(h_to_h)
-    dict_to_file(icmp_count, title="ICMP")
+    dict_to_file(icmp_count, title="ICMP\nMaybe shows VLANs?")
 
     check_ICMP(icmp_count)
 
-    dict_to_file(arp_count, title="ARP")
+    dict_to_file(arp_count, title="ARP\nCould show stuff like routers?")
+
+    file.write("\n\n"+"-"*20+"\nSNMP\nCan show subnets\n"+"-"*20+"\n")
+    for finding in snmp_info:
+        file.write(f"Found address {finding}\n")
+
+    file.write("\n\nOverview\n----------\n")
+    file.write(str(protocol_count))
+
     file.close()
     print(f"Output to {args.output}")
