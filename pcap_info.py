@@ -11,6 +11,7 @@ from pathlib import Path
 
 # Actually the important import
 from scapy.all import *
+from scapy.layers import http
 
 """
 ----------
@@ -18,8 +19,17 @@ Exporting
 ----------
 """
 
+
 def generate_title(title: str, sub: str = None) -> str:
-    return "\n\n" + "-" * 20 + f"\n{title:^20}\n" + (f"{sub:^20}\n" if sub else "") + "-" * 20 + "\n"
+    return (
+        "\n\n"
+        + "-" * 20
+        + f"\n{title:^20}\n"
+        + (f"{sub:^20}\n" if sub else "")
+        + "-" * 20
+        + "\n"
+    )
+
 
 def dict_to_file(dic: dict, depth: int = 0, title: str = None, sub: str = None):
     global file
@@ -63,6 +73,7 @@ def check_ICMP(icmp_info: dict):
             else:
                 file.write(f"No ICMP reply between {src} and {dst}\n")
 
+
 """
 ----------
 Packet Stuff
@@ -78,7 +89,6 @@ def get_packet_layers(packet):
             continue
         if packet.name != "Padding" and packet.name != "Raw":
             yield packet.name
-
 
 
 """
@@ -172,7 +182,7 @@ if __name__ == "__main__":
         "-hl",
         "--headless",
         action="store_true",
-        help="Use this flag to not have the live stats updates. Might run a little faster?"
+        help="Use this flag to not have the live stats updates. Might run a little faster?",
     )
     args = parser.parse_args()
 
@@ -251,7 +261,7 @@ if __name__ == "__main__":
             packet.show()
 
     updating = False
-    
+
     if not args.headless:
         update_thread.join()
 
