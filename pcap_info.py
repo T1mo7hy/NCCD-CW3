@@ -18,11 +18,13 @@ Exporting
 ----------
 """
 
+def generate_title(title: str, sub: str = None) -> str:
+    return "\n\n" + "-" * 20 + f"\n{title:^20}\n" + (f"{sub:^20}\n" if sub else "") + "-" * 20 + "\n"
 
-def dict_to_file(dic: dict, title=None, depth=0):
+def dict_to_file(dic: dict, depth: int = 0, title: str = None, sub: str = None):
     global file
     if depth == 0 and title:
-        file.write("\n\n" + "-" * 20 + f"\n{title:20}\n" + "-" * 20 + "\n")
+        file.write(generate_title(title, sub))
     for key, value in sorted(dic.items()):
         if isinstance(value, dict):
             file.write("    " * depth + f"{key:6}\n")
@@ -31,27 +33,10 @@ def dict_to_file(dic: dict, title=None, depth=0):
             file.write("    " * (depth + 1) + f"{key:6}    {value}\n")
 
 
-"""
-----------
-Packet Stuff
-----------
-"""
-
-
-def get_packet_layers(packet):
-    yield packet.name
-    while packet.payload:
-        packet = packet.payload
-        if packet.payload.name == packet.name:
-            continue
-        if packet.name != "Padding" and packet.name != "Raw":
-            yield packet.name
-
-
 def check_ICMP(icmp_info: dict):
     global file
     title = "ICMP Pings"
-    file.write("\n\n" + "-" * 20 + f"{title:20}\n" + "-" * 20 + "\n")
+    file.write(generate_title("ICMP Pings"))
     for src, dest_info in sorted(icmp_info.items()):
         for dst, requests in sorted(dest_info.items()):
             echo_requests = sum(
@@ -77,6 +62,23 @@ def check_ICMP(icmp_info: dict):
                     )
             else:
                 file.write(f"No ICMP reply between {src} and {dst}\n")
+
+"""
+----------
+Packet Stuff
+----------
+"""
+
+
+def get_packet_layers(packet):
+    yield packet.name
+    while packet.payload:
+        packet = packet.payload
+        if packet.payload.name == packet.name:
+            continue
+        if packet.name != "Padding" and packet.name != "Raw":
+            yield packet.name
+
 
 
 """
@@ -260,18 +262,19 @@ if __name__ == "__main__":
     file = open(args.output, "w+")
 
     dict_to_file(h_to_h)
-    dict_to_file(icmp_count, title="ICMP\nMaybe shows VLANs?")
+    dict_to_file(icmp_count, title="ICMP", sub="Maybe shows VLANs?")
 
     check_ICMP(icmp_count)
 
-    dict_to_file(arp_count, title="ARP\nCould show stuff like routers?")
+    dict_to_file(arp_count, title="ARP", sub="Could show stuff like routers?")
 
-    file.write("\n\n"+"-"*20+"\nSNMP\nCan show subnets\n"+"-"*20+"\n")
+    file.write(generate_title("SNMP", "Can show subnets"))
     for finding in snmp_info:
         file.write(f"Found address {finding}\n")
 
     file.write("\n\nOverview\n----------\n")
     file.write(str(protocol_count))
+    file.write(f"\n{protocol_count.count:,}\n")
 
     file.close()
     print(f"Output to {args.output}")
