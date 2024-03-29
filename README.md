@@ -3,7 +3,7 @@
 
 ## Features So Far
 - Shows protocols & their counts
-- Shows communications
+- Shows communications & ports
 - Breaks down ICMP, ARP & SNMP
 - Saves analysis to file
 

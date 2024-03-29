@@ -9,9 +9,10 @@ import curses, threading, time
 import argparse, sys
 from pathlib import Path
 
-# Actually the important import
+# Actually the important imports
 from scapy.all import *
 from scapy.layers import http
+import socket
 
 """
 ----------
@@ -20,32 +21,35 @@ Exporting
 """
 
 
-def generate_title(title: str, sub: str = None) -> str:
+def generate_title(title: str, sub: str = None, length: int = 40) -> str:
     return (
         "\n\n"
-        + "-" * 20
-        + f"\n{title:^20}\n"
-        + (f"{sub:^20}\n" if sub else "")
-        + "-" * 20
+        + "-" * length
+        + f"\n{title:^{length}}\n"
+        + (f"{sub:^{length}}\n" if sub else "")
+        + "-" * length
         + "\n"
     )
 
 
-def dict_to_file(dic: dict, depth: int = 0, title: str = None, sub: str = None):
+def dict_to_file(
+    dic: dict, depth: int = 0, title: str = None, sub: str = None, smallest: int = 0
+):
     global file
     if depth == 0 and title:
         file.write(generate_title(title, sub))
     for key, value in sorted(dic.items()):
         if isinstance(value, dict):
             file.write("    " * depth + f"{key:6}\n")
-            dict_to_file(value, depth=depth + 1)
+            dict_to_file(value, depth=depth + 1, smallest=smallest)
         else:
+            if isinstance(value, int) and value < smallest:
+                continue
             file.write("    " * (depth + 1) + f"{key:6}    {value}\n")
 
 
 def check_ICMP(icmp_info: dict):
     global file
-    title = "ICMP Pings"
     file.write(generate_title("ICMP Pings"))
     for src, dest_info in sorted(icmp_info.items()):
         for dst, requests in sorted(dest_info.items()):
@@ -73,6 +77,26 @@ def check_ICMP(icmp_info: dict):
             else:
                 file.write(f"No ICMP reply between {src} and {dst}\n")
 
+def export_ports(port_info: dict):
+    global file
+    file.write(generate_title("Ports", sub="Might show services - probably inaccurate"))
+    for ip, port_breakdown in sorted(port_info.items()):
+        if len(port_breakdown.keys()) >= 15:
+            continue
+        file.write(ip+"\n")
+        for port_number, count in port_breakdown.items():
+            try:
+                possible_service = socket.getservbyport(port_number)
+            except:
+                possible_service = ""
+            file.write("    " + f"{port_number:6} - {possible_service:12}    {count}\n")
+
+def output_mac_to_ip(mac_to_ip: dict[str, set]):
+    global file
+    file.write(generate_title("MAC to multiple IP addresses", sub="Can show potential routers"))
+    for mac_address, ip_addresses in mac_to_ip.items():
+        if len(ip_addresses) > 1:
+            file.write(f"{mac_address} has {len(ip_addresses)} IPs:\n    {sorted(ip_addresses)}\n")
 
 """
 ----------
@@ -147,7 +171,6 @@ Live Stats Updating
 
 def update_stats():
     global console, protocol_count, updating
-
     console = curses.initscr()
     console.scrollok(True)
     console.idlok(True)
@@ -189,7 +212,6 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         print("You can also run `pcap_info.py -h` to change the default options")
         time.sleep(1)
-
     page_title = f"Analysing {args.pcap}\n"
     page_title_edge = "-" * len(page_title) + "\n"
 
@@ -204,6 +226,8 @@ if __name__ == "__main__":
     arp_count = {}
     icmp_count = {}
     snmp_info = []
+    port_info = {}
+    mac_to_ip = {}
 
     h_to_h = {}
 
@@ -244,10 +268,32 @@ if __name__ == "__main__":
                 icmp_count[packet[IP].src][packet[IP].dst][type_code] += 1
 
         if packet.haslayer(IP) and packet[IP].version == 4:
+            if packet.dst not in mac_to_ip.keys():
+                mac_to_ip[packet.dst] = {packet[IP].dst}
+            else:
+                mac_to_ip[packet.dst].add(packet[IP].dst)
+
+            if packet.src not in mac_to_ip.keys():
+                mac_to_ip[packet.src] = {packet[IP].src}
+            else:
+                mac_to_ip[packet.src].add(packet[IP].src)
+
             protocol = packet.sprintf("%IP.proto%")
 
             if packet.haslayer(TCP) and packet[TCP].flags & 4:
                 protocol = protocol + "-error"
+
+            port_layer = (
+                TCP if packet.haslayer(TCP) else UDP if packet.haslayer(UDP) else None
+            )
+            if port_layer:
+                port_key = packet[port_layer].dport
+                if packet[IP].dst not in port_info.keys():
+                    port_info[packet[IP].dst] = {port_key: 1}
+                elif port_key not in port_info[packet[IP].dst].keys():
+                    port_info[packet[IP].dst][port_key] = 1
+                else:
+                    port_info[packet[IP].dst][port_key] += 1
 
             if packet[IP].src not in h_to_h.keys():
                 h_to_h[packet[IP].src] = {packet[IP].dst: {protocol: 1}}
@@ -271,12 +317,14 @@ if __name__ == "__main__":
 
     file = open(args.output, "w+")
 
-    dict_to_file(h_to_h)
+    dict_to_file(h_to_h, title="Host to Host")
     dict_to_file(icmp_count, title="ICMP", sub="Maybe shows VLANs?")
 
     check_ICMP(icmp_count)
 
+    export_ports(port_info)
     dict_to_file(arp_count, title="ARP", sub="Could show stuff like routers?")
+    output_mac_to_ip(mac_to_ip)
 
     file.write(generate_title("SNMP", "Can show subnets"))
     for finding in snmp_info:
