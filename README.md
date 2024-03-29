@@ -4,6 +4,7 @@
 ## Features So Far
 - Shows protocols & their counts
 - Shows communications & ports
+- Shows if MAC address has multiple IPs
 - Breaks down ICMP, ARP & SNMP
 - Saves analysis to file
 
